@@ -1,19 +1,32 @@
-name: Build Multi-Arch Docker Image
+name: Publish Docker image (Multi Registries)
 
 on:
   push:
-    branches:
-      - main
     tags:
-      - "v*"
+      - '*'
   workflow_dispatch:
-
+    inputs:
+      name:
+        description: 'reason'
+        required: false
+env:
+  REGISTRY: ghcr.io
+  IMAGE: EliaPavlic12/gemini-business2api
+  
 jobs:
-  build:
+  push_to_registries:
+    name: Push Docker image to multiple registries
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
     steps:
-      - name: Checkout code
+      - name: Check out the repo
         uses: actions/checkout@v4
+
+      - name: Save version info
+        run: |
+          git describe --tags > VERSION 
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -21,25 +34,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/gemini-business2api
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
+            type=ref,event=tag
 
-      - name: Build and push
+      - name: Build and push Docker images
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -47,9 +58,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          # 优化构建参数
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
-          provenance: false
